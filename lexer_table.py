@@ -170,7 +170,7 @@ with open('test.txt') as f:
             elif(new_state == TT_IDENTIFIER):  # KEYWORD -> IDENTIFIER
                 token = token + char
             else:
-                if(token == TT_KEYWORD and token not in KEYWORDS):
+                if(current_state == TT_KEYWORD and token not in KEYWORDS):
                     tokens.append((TT_IDENTIFIER, token))
                 else:
                     tokens.append((current_state, token))
