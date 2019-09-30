@@ -14,7 +14,8 @@ ST_ERROR = 9  # "ERROR"
 
 # This array is used to convert the state type to a token
 get_token_string = ["OPERATOR", "SEPARATOR", "IDENTIFIER",
-                    "KEYWORD", "INT", "REAL", "COMMENT", "DECIMAL", "SPACE", "ERROR"]
+                    "KEYWORD", "INT", "REAL", "COMMENT",
+                    "DECIMAL", "SPACE", "ERROR"]
 
 # CHARACTER TYPES
 CT_ALPHA = 0  # "ALPHA"
@@ -25,30 +26,6 @@ CT_DECIMAL = 4  # "DECIMAL"
 CT_DOLLAR = 5  # "$"
 CT_OPERATOR = 6  # "OPERATOR"
 CT_SEPARATOR = 7  # "SEPARATOR"
-
-
-def get_char_type(char):
-    char_type = None
-
-    if(char.isspace() or char == ''):
-        char_type = CT_SPACE
-    elif (char.isdigit()):
-        char_type = CT_DIGIT
-    elif ('!' == char):
-        char_type = CT_BANG
-    elif('.' == char):
-        char_type = CT_DECIMAL
-    elif ('$' == char):
-        char_type = CT_DOLLAR
-    elif (char in OPERATORS):
-        char_type = CT_OPERATOR
-    elif (char in SEPARATORS):
-        char_type = CT_SEPARATOR
-    elif (char.isalpha()):
-        char_type = CT_ALPHA
-
-    return char_type
-
 
 transition_table = {
     ST_INT: {
@@ -79,7 +56,7 @@ transition_table = {
         CT_SPACE: ST_ERROR,
         CT_OPERATOR: ST_ERROR,
         CT_SEPARATOR: ST_ERROR,
-        CT_BANG: ST_COMMENT
+        CT_BANG: ST_ERROR,
     },
     ST_SPACE: {
         CT_ALPHA: ST_KEYWORD,
@@ -97,7 +74,7 @@ transition_table = {
         CT_DECIMAL: ST_ERROR,
         CT_DOLLAR: ST_ERROR,
         CT_SPACE: ST_SPACE,
-        CT_OPERATOR: ST_ERROR,
+        CT_OPERATOR: ST_OPERATOR,
         CT_SEPARATOR: ST_SEPARATOR,
         CT_BANG: ST_COMMENT
     },
@@ -141,11 +118,20 @@ transition_table = {
         CT_SEPARATOR: ST_COMMENT,
         CT_BANG: ST_SPACE
     },
+    ST_ERROR: {
+        CT_ALPHA: ST_ERROR,
+        CT_DIGIT: ST_ERROR,
+        CT_DECIMAL: ST_ERROR,
+        CT_DOLLAR: ST_ERROR,
+        CT_SPACE: ST_SPACE,
+        CT_OPERATOR: ST_OPERATOR,
+        CT_SEPARATOR: ST_SEPARATOR,
+        CT_BANG: ST_ERROR,
+    }
 }
 
-
 # GROUP TYPE DEFINITIONS
-SEPARATORS = "'()}{[],.:;!"
+SEPARATORS = "'()}{[],.:;"
 OPERATORS = "*+-=/><%"
 KEYWORDS = ["int", "float", "bool", "if", "else", "then",
             "endif", "while", "whileend",
@@ -153,26 +139,48 @@ KEYWORDS = ["int", "float", "bool", "if", "else", "then",
             "output", "and", "or", "function"]
 
 
-def lexer(filename):
+def get_char_type(char):
+    char_type = None
+
+    if(char.isspace() or char == ''):
+        char_type = CT_SPACE
+    elif (char.isdigit()):
+        char_type = CT_DIGIT
+    elif ('!' == char):
+        char_type = CT_BANG
+    elif('.' == char):
+        char_type = CT_DECIMAL
+    elif ('$' == char):
+        char_type = CT_DOLLAR
+    elif (char in OPERATORS):
+        char_type = CT_OPERATOR
+    elif (char in SEPARATORS):
+        char_type = CT_SEPARATOR
+    elif (char.isalpha()):
+        char_type = CT_ALPHA
+
+    return char_type
+
+
+def lexer(path):
     token = ""
     tokens = []
+    illegal_tokens = []
     current_state = ST_SPACE
+    line_number = 1
 
-    with open(filename) as f:
+    with open(path) as f:
         while True:
             char = f.read(1)
+            if(char == '\n'):
+                line_number = line_number + 1
 
             char_type = get_char_type(char)
 
             new_state = transition_table[current_state][char_type]
 
-            # Exit on an error state
-            if(new_state == ST_ERROR):
-                print("ILLEGAL TOKEN: ", token.strip() + char)
-                token = ""
-                continue
-
-            if(current_state != new_state):  # If the state has changed....
+            # If the state has changed....
+            if(current_state != new_state):
                 # If the current state was just a space or a comment we do not want to append them to the token.
                 # Instead we start a fresh token using the new char
                 if(current_state == ST_SPACE or current_state == ST_COMMENT):
@@ -188,12 +196,23 @@ def lexer(filename):
                 elif(new_state == ST_IDENTIFIER):
                     token = token + char
 
+                # If there is a state change and we have entered an error state
+                # the previous token is part of that error.  Append the new char
+                # and continue building the illegal token
+                elif(new_state == ST_ERROR):
+                    token = token + char
+
                 # If any other state change occurs...
                 else:
                     # If we're current in the keyword state, make sure it is in the keyword list,
                     # Otherwise, it's an identifier.
                     if(current_state == ST_KEYWORD and token not in KEYWORDS):
                         tokens.append((get_token_string[ST_IDENTIFIER], token))
+
+                    # If we are exiting an error state, append the illegal token to our
+                    # illegal token dictionary with the line number where it occurred
+                    elif(current_state == ST_ERROR):
+                        illegal_tokens.append((line_number, token))
 
                     # All other cases append the token that we've built.
                     else:
@@ -212,16 +231,21 @@ def lexer(filename):
             if not char:
                 # print("End of file")
                 break
-    return tokens
+    return tokens, illegal_tokens
 
 
 if __name__ == "__main__":
-    # To lex a file, please pass the filename as the first argument
-    # Example usage: python3 lexer.py [filename]
-    filename = sys.argv[1]
+    # To lex a file, please pass the path as the first argument
+    # Example usage: python3 lexer.py [path]
+    path = sys.argv[1]
 
-    tokens = lexer(filename)
+    tokens, illegal_tokens = lexer(path)
 
-    print("TOKENS\t\t\tLexemes\n")
+    print("TOKENS\t\t\tLexemes")
     for token in tokens:
-        print(token[0], "\t=\t", token[1])
+        print("{0:10}\t\t{1}".format(token[0], token[1]))
+    if(len(illegal_tokens) > 0):
+        print("\nILLEGAL TOKENS")
+        print("Line\t\t\tIllegal Token")
+        for token in illegal_tokens:
+            print("{0}\t\t\t{1}".format(token[0], token[1]))
