@@ -139,99 +139,102 @@ KEYWORDS = ["int", "float", "bool", "if", "else", "then",
             "output", "and", "or", "function"]
 
 
-def get_char_type(char):
-    char_type = None
+class Lexer:
+    def __init__(self, path):
+        self._file = open(path)
+        self.line_number = 1
+        self.token = ""
+        self.current_state = ST_SPACE
 
-    if(char.isspace() or char == ''):
-        char_type = CT_SPACE
-    elif (char.isdigit()):
-        char_type = CT_DIGIT
-    elif ('!' == char):
-        char_type = CT_BANG
-    elif('.' == char):
-        char_type = CT_DECIMAL
-    elif ('$' == char):
-        char_type = CT_DOLLAR
-    elif (char in OPERATORS):
-        char_type = CT_OPERATOR
-    elif (char in SEPARATORS):
-        char_type = CT_SEPARATOR
-    elif (char.isalpha()):
-        char_type = CT_ALPHA
+    def get_char_type(self, char):
+        char_type = None
 
-    return char_type
+        if(char.isspace() or char == ''):
+            char_type = CT_SPACE
+        elif (char.isdigit()):
+            char_type = CT_DIGIT
+        elif ('!' == char):
+            char_type = CT_BANG
+        elif('.' == char):
+            char_type = CT_DECIMAL
+        elif ('$' == char):
+            char_type = CT_DOLLAR
+        elif (char in OPERATORS):
+            char_type = CT_OPERATOR
+        elif (char in SEPARATORS):
+            char_type = CT_SEPARATOR
+        elif (char.isalpha()):
+            char_type = CT_ALPHA
 
+        return char_type
 
-def lexer(path):
-    token = ""
-    tokens = []
-    illegal_tokens = []
-    current_state = ST_SPACE
-    line_number = 1
+    def get_token(self):
+        while(True):
+            char = self._file.read(1)
 
-    with open(path) as f:
-        while True:
-            char = f.read(1)
             if(char == '\n'):
-                line_number = line_number + 1
+                self.line_number = self.line_number + 1
 
-            char_type = get_char_type(char)
+            char_type = self.get_char_type(char)
 
-            new_state = transition_table[current_state][char_type]
+            new_state = transition_table[self.current_state][char_type]
 
             # If the state has changed....
-            if(current_state != new_state):
+            if(self.current_state != new_state):
                 # If the current state was just a space or a comment we do not want to append them to the token.
                 # Instead we start a fresh token using the new char
-                if(current_state == ST_SPACE or current_state == ST_COMMENT):
-                    token = char
+                if(self.current_state == ST_SPACE or self.current_state == ST_COMMENT):
+                    self.token = char
 
                 # If there is a state change and we are changing into a decimal point or out of a decimal point
                 # we want to concat that to the current token
-                elif(current_state == ST_DECIMAL or new_state == ST_DECIMAL):
-                    token = token + char
+                elif(self.current_state == ST_DECIMAL or new_state == ST_DECIMAL):
+                    self.token = self.token + char
 
                 # If there is a state change and the new state is an identifier, then we are transitioning
                 # from a keyword to an identifier, so just concat the char to the token.
                 elif(new_state == ST_IDENTIFIER):
-                    token = token + char
+                    self.token = self.token + char
 
                 # If there is a state change and we have entered an error state
                 # the previous token is part of that error.  Append the new char
                 # and continue building the illegal token
                 elif(new_state == ST_ERROR):
-                    token = token + char
+                    self.token = self.token + char
 
                 # If any other state change occurs...
                 else:
+                    return_token = self.token.strip()
+                    return_state = self.current_state
+
+                    # start a new token with the new char
+                    self.current_state = new_state
+                    self.token = char
+
                     # If we're current in the keyword state, make sure it is in the keyword list,
                     # Otherwise, it's an identifier.
-                    if(current_state == ST_KEYWORD and token not in KEYWORDS):
-                        tokens.append((get_token_string[ST_IDENTIFIER], token))
+                    if(return_state == ST_KEYWORD and return_token not in KEYWORDS):
+                        return (get_token_string[ST_IDENTIFIER], return_token)
 
                     # If we are exiting an error state, append the illegal token to our
                     # illegal token dictionary with the line number where it occurred
-                    elif(current_state == ST_ERROR):
-                        illegal_tokens.append((line_number, token))
+                    elif(return_state == ST_ERROR):
+                        return ("ERROR: "+str(self.line_number), return_token)
 
                     # All other cases append the token that we've built.
                     else:
-                        tokens.append((get_token_string[current_state], token))
-
-                    # start a new token with the new char
-                    token = char
+                        return (get_token_string[return_state], return_token)
 
             # If it's not a state change, append the char to the token and continue.
             else:
-                token = token + char
+                self.token = self.token + char
 
-            current_state = new_state
+            self.current_state = new_state
 
             # If done reading the file...
             if not char:
                 # print("End of file")
-                break
-    return tokens, illegal_tokens
+                return None
 
 
 if __name__ == "__main__":
@@ -242,14 +245,11 @@ if __name__ == "__main__":
     # To lex a file, please pass the path as the first argument
     # Example usage: python3 lexer.py [path]
     path = sys.argv[1]
-
-    tokens, illegal_tokens = lexer(path)
+    lexer = Lexer(path)
 
     print("TOKENS\t\t\tLexemes")
-    for token in tokens:
-        print("{0:10}\t\t{1}".format(token[0], token[1]))
-    if(len(illegal_tokens) > 0):
-        print("\nILLEGAL TOKENS")
-        print("Line\t\t\tIllegal Token")
-        for token in illegal_tokens:
-            print("{0}\t\t\t{1}".format(token[0], token[1]))
+    while True:
+        token = lexer.get_token()
+        if(token is None):
+            break
+        print("{0:<10}\t\t{1}".format(token[0], token[1]))

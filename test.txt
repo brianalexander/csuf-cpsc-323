@@ -1,4 +1,5 @@
-$int int*int
+$int
+int*int
 int*
 5!!
 23.00
